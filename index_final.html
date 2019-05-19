@@ -1,0 +1,569 @@
+ <!doctype html>
+<html>
+<head>
+    <title>JSW</title>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.8.0/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.8.0/jszip.js"></script>
+</head>
+
+<body>
+    <div>
+        <p>Upload Excel File</p>
+        <input type = "file" id = "input-excel">
+    </div>
+    <script>
+
+        
+        var years = ['2016', '2017', '2018']
+        
+        var quarters = ['2016-Q1', '2016-Q2', '2016-Q3', '2016-Q4', 
+                                '2017-Q1', '2017-Q2', '2017-Q3', '2017-Q4', 
+                                '2018-Q1', '2018-Q2', '2018-Q3', '2018-Q4'];
+            
+        var levels = ['L19', 'L18', 'L17', 'L16', 'L15', 'L14', 
+                          'L13', 'L12', 'L11', 'L10', 'L9', 'L8', 
+                          'L7', 'L6', 'L5', 'L4', 'L3', 'L2', 'L1'];
+
+        var next_quarters = {'2018-Q4':'2019-Q1', '2019-Q1':'2019-Q2', '2019-Q2':'2019-Q3', 
+                                '2019-Q3':'2019-Q4', '2019-Q4':'2020-Q1', '2020-Q1':'2020-Q2',
+                                '2020-Q2':'2020-Q3', '2020-Q3':'2020-Q4', '2020-Q4':'2021-Q1',
+                                '2021-Q1':'2021-Q2', '2021-Q2':'2021-Q3', '2021-Q3':'2021-Q4',
+                                '2021-Q4':'2022-Q1', '2022-Q1':'2022-Q2', '2022-Q2':'2022-Q3',
+                                '2022-Q3':'2022-Q4', '2022-Q4':'2023-Q1', '2023-Q1':'2023-Q2',
+                                '2023-Q2':'2023-Q3', '2023-Q3':'2023-Q4'};
+
+        var next_years = {'2018':'2019', '2019':'2020', '2020':'2021', '2021':'2022', '2022':'2023'};
+
+        function isMember(indx, change_index_list){
+            var flag = 0;
+
+            for(var i = 0; i < change_index_list.length; ++i) {
+                if(change_index_list[i] == indx) {
+                    flag = 1;
+                    break;
+                }
+            } 
+
+            if(flag == 0){
+                return false;
+            }else{
+                return true; 
+            }
+        }
+
+        var dataRange = {};
+        last_quart = '2018-Q4';
+        last_change_index = [];
+        function showgraph(dataArray, quart, change_index_list){
+            
+            //var dataArray = dataRange[worksheet_name][quart];
+            d3.select("svg").remove();
+
+            var chart_zoom = 5;
+            if (d3.max(dataArray) > 400){
+                chart_zoom = 0.2;
+            }
+
+            color_list = [];
+
+            for (var i = 0; i < dataArray.length; i++){
+                if (isMember(i, change_index_list)){
+                    color_list.push("#FF0000");
+                }else{
+                    color_list.push("#00FF00");
+                }
+            }
+
+            var canvas_width = d3.max([100, d3.max(dataArray)]);
+
+            var y_scale = d3.scaleLinear()
+            .domain([0, d3.max(dataArray)])
+            .range([0, (canvas_width)*chart_zoom]);
+
+            var x_scale = d3.scaleBand()
+            .domain(levels)
+            .range([2.5, 18*15+10]);
+
+            var y_axis = d3.axisBottom(y_scale);
+
+            var x_axis = d3.axisLeft(x_scale)
+            .ticks(19);
+            
+            var canvas = d3.select("body")
+            .append("svg")
+            .attr("width", (canvas_width+5)*chart_zoom)
+            .attr("height", 500)
+            .append("g");
+
+            var bars = canvas.selectAll("rect")
+            .data(dataArray)
+            .enter()    
+            .append("rect")
+            .attr("width", function(d){return d*(canvas_width+5)*chart_zoom/d3.max(dataArray);})
+            .attr("height", 10)
+            .attr("y", function(d, i){return i*15;})
+            .attr("fill", function(d, i){return color_list[i];})
+            .attr("transform", "translate(30, 0)");
+
+            canvas.selectAll(".text")  		
+            .data(dataArray)
+            .enter()
+            .append("text")
+            .attr("class","label")
+            .attr("x", 0)
+            .attr("y", function(d, i){return i*15 + 10;})
+            .style("font-size", "10px")
+            .text(function(d) { return d; })
+            .attr("transform", "translate(30, 0)");; 
+
+            canvas.append("g")
+            .attr("transform", "translate(30, 300)")
+            .call(y_axis);
+
+            canvas.append("g")
+            .attr("class", "y axis")
+            .attr("transform", "translate(29, 0)")
+            .call(x_axis);
+
+            var svgText = canvas.append("text")
+            .attr("x",50)
+            .attr("y",350)
+            .text(quart);
+
+        }
+
+        function CheckAllZeros(dataArray){
+            var flag = 0;
+
+            for(var i = 0; i < dataArray.length; ++i) {
+                if(dataArray[i] != 0) {
+                    flag = 1;
+                    break;
+                }
+            } 
+
+            if(flag == 0){
+                return true;
+            }else{
+                return false; 
+            }
+
+        }
+
+        function FindLevelIndex(curr_level){
+            var level_index = 0;
+            for (var i=0; i < levels.length; i++){
+                if (levels[i] == curr_level){
+                    level_index = i;
+                }
+            }
+            return level_index;
+        }
+
+        function simulatenextquart(worksheet_name){
+            var next_quart = next_quarters[last_quart];
+
+            if (CheckNextQuart(Object.keys(dataRange[worksheet_name]), next_quart)){
+                dataRange[worksheet_name][next_quart] = JSON.parse(JSON.stringify(dataRange[worksheet_name][last_quart]));
+            }
+            last_quart = next_quarters[last_quart];
+            last_change_index = [];
+            addsimulate(worksheet_name);
+        }
+
+        function CheckNextQuart(worksheet_keys, next_quart){
+            var flag = 0;
+
+            for(var i = 0; i < worksheet_keys.length; ++i) {
+                if(worksheet_keys[i] == next_quart) {
+                    flag = 1;
+                    break;
+                }
+            } 
+
+            if(flag == 0){
+                return true;
+            }else{
+                return false; 
+            }
+
+        }
+
+        function savenext(worksheet_name, curr_level){
+            
+            if (last_quart == '2023-Q4'){
+                return;
+            }
+
+            var next_quart = next_quarters[last_quart];
+
+            if (CheckNextQuart(Object.keys(dataRange[worksheet_name]), next_quart)){
+                dataRange[worksheet_name][next_quart] = JSON.parse(JSON.stringify(dataRange[worksheet_name][last_quart]));
+            }
+            
+            var dataArray = JSON.parse(JSON.stringify(dataRange[worksheet_name][next_quart]));
+
+            var level_index = FindLevelIndex(curr_level);
+            last_change_index.push(level_index);
+
+            if (CheckAllZeros(dataArray)){
+                return;
+            }
+
+            var new_joins = document.getElementById("new_join").value;
+            if (new_joins.length == 0){
+                new_joins = 0;
+            }else{
+                new_joins = parseFloat(new_joins);
+            }
+
+            var retirees = document.getElementById("retiree").value;
+            if (retirees.length == 0){
+                retirees = 0;
+            }else{
+                retirees = parseFloat(retirees);
+            }
+
+            var deaths = document.getElementById("death").value
+            if (deaths.length == 0){
+                deaths = 0;
+            }else{
+                deaths = parseFloat(deaths);
+            }
+
+            var incomings = document.getElementById("incoming").value
+            if (incomings.length == 0){
+                incomings = 0;
+            }else{
+                incomings = parseFloat(incomings);
+            }
+
+            var outgoings = document.getElementById("outgoing").value
+            if (outgoings.length == 0){
+                outgoings = 0;
+            }else{
+                outgoings = parseFloat(outgoings);
+            }
+
+            var promotions = document.getElementById("promotion").value
+            if (promotions.length == 0){
+                promotions = 0;
+            }else{
+                promotions = parseFloat(promotions);
+            }
+
+            console.log(dataArray[level_index]);
+            console.log(new_joins);
+            console.log(dataArray[level_index] + new_joins);
+            dataArray[level_index] += new_joins;
+            dataArray[level_index] += incomings;
+
+            if(dataArray[level_index] > retirees){
+                dataArray[level_index] -= retirees;
+            }else{
+                dataArray[level_index] = 0;
+            }
+
+            if(dataArray[level_index] > deaths){
+                dataArray[level_index] -= deaths;
+            }else{
+                dataArray[level_index] = 0;
+            }
+
+            if(dataArray[level_index] > outgoings){
+                dataArray[level_index] -= outgoings;
+            }else{
+                dataArray[level_index] = 0;
+            }
+
+            if(dataArray[level_index] > promotions){
+                dataArray[level_index] -= promotions;
+                dataArray[level_index-1] += promotions;
+                if (promotions > 0){
+                    last_change_index.push(level_index-1);
+                }
+            }else{
+                dataArray[level_index] = 0;
+            }
+            
+            console.log(dataArray);
+            dataRange[worksheet_name][next_quart] = JSON.parse(JSON.stringify(dataArray));
+            showgraph(dataRange[worksheet_name][next_quart], next_quart, last_change_index);
+            
+        }
+
+        function addlevel(worksheet_name, curr_level){
+
+            d3.select("svg").remove();
+
+            var sim_div = document.getElementById("sim_div");
+            if (sim_div){
+                sim_div.parentNode.removeChild(sim_div);
+            }
+
+            sim_div = document.createElement("div");
+            sim_div.id = "sim_div";
+            
+            p_elem = document.createElement("p");
+            p_elem.innerHTML = "Enter Personnel Change Numbers";
+            sim_div.appendChild(p_elem);
+
+            
+            var new_join_h = document.createElement("label");
+            new_join_h.innerHTML = "Enter Number of New Joinees"
+            sim_div.appendChild(new_join_h);
+
+            var new_join = document.createElement("INPUT");
+            new_join.setAttribute("type", "text");
+            new_join.id = "new_join";
+            sim_div.appendChild(new_join);
+            sim_div.appendChild(document.createElement("br"));
+
+            var retiree_h = document.createElement("label");
+            retiree_h.innerHTML = "Enter Number of Retirees"
+            sim_div.appendChild(retiree_h);
+
+            var retiree = document.createElement("INPUT");
+            retiree.setAttribute("type", "text");
+            retiree.id = "retiree";
+            sim_div.appendChild(retiree);
+            sim_div.appendChild(document.createElement("br"));
+
+            var death_h = document.createElement("label");
+            death_h.innerHTML = "Enter Number of Deaths"
+            sim_div.appendChild(death_h);
+
+            var death = document.createElement("INPUT");
+            death.setAttribute("type", "text");
+            death.id = "death";
+            sim_div.appendChild(death);
+            sim_div.appendChild(document.createElement("br"));
+
+            var promotion_h = document.createElement("label");
+            promotion_h.innerHTML = "Enter Number of Promotions"
+            sim_div.appendChild(promotion_h);
+
+            var promotion = document.createElement("INPUT");
+            promotion.setAttribute("type", "text");
+            promotion.id = "promotion";
+            sim_div.appendChild(promotion);
+            sim_div.appendChild(document.createElement("br"));
+
+            var incoming_h = document.createElement("label");
+            incoming_h.innerHTML = "Enter Number of Incoming from other departments"
+            sim_div.appendChild(incoming_h);
+
+            var incoming = document.createElement("INPUT");
+            incoming.setAttribute("type", "text");
+            incoming.id = "incoming";
+            sim_div.appendChild(incoming);
+            sim_div.appendChild(document.createElement("br"));
+
+            var outgoing_h = document.createElement("label");
+            outgoing_h.innerHTML = "Enter Number of Outgoing to other departments"
+            sim_div.appendChild(outgoing_h);
+
+            var outgoing = document.createElement("INPUT");
+            outgoing.setAttribute("type", "text");
+            outgoing.id = "outgoing";
+            sim_div.appendChild(outgoing);
+            sim_div.appendChild(document.createElement("br"));
+
+            var save_next = document.createElement("button");
+            var save_text = document.createTextNode("Save");
+            save_next.appendChild(save_text);
+            save_next.value = curr_level;
+            save_next.onclick = function(){savenext(worksheet_name, this.value);};
+            sim_div.appendChild(save_next);
+
+            document.body.appendChild(sim_div);
+
+        }
+
+        function addsimulate(worksheet_name){
+            
+            var sim_div = document.getElementById("sim_div");
+            if (sim_div){
+                sim_div.parentNode.removeChild(sim_div);
+            }
+
+            var level_div = document.getElementById("level_div");
+            if (level_div){
+                level_div.parentNode.removeChild(level_div);
+            }
+            
+            level_div = document.createElement("div");
+            level_div.id = "level_div";
+            p_elem = document.createElement("p");
+            p_elem.innerHTML = "Select Level";
+            level_div.appendChild(p_elem);
+            for (var i = 0; i < levels.length; i++) {
+                var btn = document.createElement("button");
+                var t = document.createTextNode(levels[i]);
+                btn.appendChild(t);
+                btn.value = levels[i];
+                btn.onclick = function(){addlevel(worksheet_name, this.value);};
+                level_div.appendChild(btn);
+            }
+
+            level_div.appendChild(document.createElement("br"));
+            var simulate_next = document.createElement("button");
+            var simulate_text = document.createTextNode("Simulate Next Quarter");
+            simulate_next.appendChild(simulate_text);
+            simulate_next.value = worksheet_name;
+            simulate_next.onclick = function(){simulatenextquart(this.value);};
+            level_div.appendChild(simulate_next);
+
+            document.body.appendChild(level_div);
+            
+            showgraph(dataRange[worksheet_name][last_quart], last_quart, []);
+
+        }
+
+        function addquarters(worksheet_name){
+
+            d3.select("svg").remove();
+
+            var level_div = document.getElementById("level_div");
+            if (level_div){
+                level_div.parentNode.removeChild(level_div);
+            }
+
+            var sim_div = document.getElementById("sim_div");
+            if (sim_div){
+                sim_div.parentNode.removeChild(sim_div);
+            }
+
+            var quarter_div = document.getElementById("quart_div");
+            if (quarter_div){
+                quarter_div.parentNode.removeChild(quarter_div);
+            }
+            
+            quarter_div = document.createElement("div");
+            quarter_div.id = "quart_div";
+            p_elem = document.createElement("p");
+            p_elem.innerHTML = "Select Quarter";
+            quarter_div.appendChild(p_elem);
+            for (var i = 0; i < quarters.length; i++) {
+                var btn = document.createElement("button");
+                var t = document.createTextNode(quarters[i]);
+                btn.appendChild(t);
+                btn.value = quarters[i];
+                btn.onclick = function(){showgraph(dataRange[worksheet_name][this.value], this.value, []);};
+                quarter_div.appendChild(btn);
+            }
+
+            var simulate = document.createElement("button");
+            var simulate_text = document.createTextNode("Simulate");
+            simulate.appendChild(simulate_text);
+            simulate.value = worksheet_name;
+            simulate.onclick = function(){addsimulate(this.value);};
+            quarter_div.appendChild(simulate);
+
+            document.body.appendChild(quarter_div);
+            last_quart = '2018-Q4';
+
+        }
+
+        $("#input-excel").change(function(e){
+            var reader = new FileReader();
+
+            reader.readAsArrayBuffer(e.target.files[0]);
+            reader.onload = function(e) {
+
+                var button_div = document.getElementById("org_div");
+                if (button_div){
+                    button_div.parentNode.removeChild(button_div);
+                }
+
+                var level_div = document.getElementById("level_div");
+                if (level_div){
+                    level_div.parentNode.removeChild(level_div);
+                }
+
+                var sim_div = document.getElementById("sim_div");
+                if (sim_div){
+                    sim_div.parentNode.removeChild(sim_div);
+                }
+
+                var quarter_div = document.getElementById("quart_div");
+                if (quarter_div){
+                    quarter_div.parentNode.removeChild(quarter_div);
+                }
+                var data = new Uint8Array(reader.result);
+                var workbook = XLSX.read(data, {type:"array"});
+
+                /* DO SOMETHING WITH workbook HERE */
+                
+                worksheet_names = workbook.SheetNames;
+                for(var ws=1; ws < worksheet_names.length; ws ++){
+                    sheet_name = workbook.SheetNames[ws];
+                    var worksheet = workbook.Sheets[sheet_name];
+                    dataRange[sheet_name] = {};
+                    var range = { s: { c: 3, r: 4 }, e: { c: 14, r: 22 } };//D5:O23
+                    
+                    /* Iterate through each element in the structure */
+                    var curr_quarter_index = -1
+                    var curr_quarter = ''
+                    for (var C = range.s.c; C <= range.e.c; ++C) {
+                        curr_quarter_index++;
+                        curr_quarter = quarters[curr_quarter_index];
+                        dataRange[sheet_name][curr_quarter] = []
+                        for (var R = range.s.r; R <= range.e.r; ++R) {
+                            var cell_address = { c: C, r: R };
+                            var data = XLSX.utils.encode_cell(cell_address);
+                            dataRange[sheet_name][curr_quarter].push(worksheet[data]['v']);
+                        }
+                    }
+                }
+
+                dataRange['full_org'] = {}
+                for (var i = 0; i < quarters.length; i++){
+                    curr_quarter = quarters[i];
+                    dataRange['full_org'][curr_quarter] = [];
+                    for (j = 0; j < levels.length; j++){
+                        dataRange['full_org'][curr_quarter].push(0);
+                    }
+                    for (j = 0; j < levels.length; j++){
+                        for (k = 0; k < Object.keys(dataRange).length; k++){
+                            curr_sheet_name = Object.keys(dataRange)[k];
+                            dataRange['full_org'][curr_quarter][j] += dataRange[curr_sheet_name][curr_quarter][j];
+                        }
+                    }
+                }
+
+
+                var button_div = document.createElement("div");
+                button_div.id = "org_div";
+                p_org_elem = document.createElement("p");
+                p_org_elem.innerHTML = "Select Full Organization";
+                button_div.appendChild(p_org_elem);
+                var org_btn = document.createElement("button");
+                var org_text = document.createTextNode("Full Organization");
+                org_btn.appendChild(org_text);
+                org_btn.value = "full_org";
+                org_btn.onclick = function(){addquarters(this.value);};
+                button_div.appendChild(org_btn);
+                button_div.appendChild(document.createElement("br"));
+                p_elem = document.createElement("p");
+                p_elem.innerHTML = "Select Department";
+                button_div.appendChild(p_elem);
+                for (var i = 1; i < worksheet_names.length; i++) {
+                    var btn = document.createElement("button");
+                    var t = document.createTextNode(worksheet_names[i]);
+                    btn.appendChild(t);
+                    btn.value = worksheet_names[i];
+                    btn.onclick = function(){addquarters(this.value);};
+                    button_div.appendChild(btn);
+                }
+
+                document.body.appendChild(button_div);
+            }
+        });
+        
+    </script>
+    
+</body>
+</html>
